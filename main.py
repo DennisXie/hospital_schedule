@@ -9,9 +9,10 @@ dir_prefix = "."
 
 class Assignment(object):
 
-    def __init__(self, date: datetime.date, name: str):
-        self.date = date
+    def __init__(self, date: datetime.date | str, name: str, holiday: bool = False):
+        self.date = date if isinstance(date, datetime.date) else datetime.datetime.strptime(date, "%Y-%m-%d").date()
         self.name = name
+        self.holiday = holiday
 
 
 class Stat(object):
@@ -71,7 +72,15 @@ class Scheduler(object):
         self.history_count: dict[str: AssignmentCount] = {}
 
     def load_history(self):
-        pass
+        history_files = self._get_files(self.history_dir)
+        for file_name in history_files:
+            wb = openpyxl.load_workbook(filename=file_name, data_only=True)
+            for sheet in wb.worksheets:
+                rows = list(sheet.rows)[1:]
+                for row in rows:
+                    self.history_schedule.append(
+                        Assignment(row[0].value, row[1].value, str(row[3].value).upper() == self.Y))
+        self.history_schedule.sort(key=lambda x: x.date)
 
     def load_days(self):
         workday_files = self._get_files(self.workday_dir)
@@ -82,6 +91,8 @@ class Scheduler(object):
                 rows = list(sheet.rows)[1:]
                 for row in rows:
                     days.append(WorkDay(row[0].value, self.Y == str(row[2].value).upper()))
+
+        days.sort(key=lambda x: x.date)
 
         for i in range(len(days)):
             next_holiday = None
@@ -139,7 +150,7 @@ class Scheduler(object):
             data[name] = [["日期", "星期名称", "节假日"]]
 
         for day in days:
-            d = "{}-{}-{}".format(day.year, day.month, day.day)
+            d = day.strftime("%Y-%m-%d")
             data["{}月".format(day.month)].append([d, day.isoweekday(), self.Y if day.isoweekday() > 5 else self.N])
 
         path = os.path.join(self.workday_dir, "{}.xlsx".format(year))
@@ -147,13 +158,19 @@ class Scheduler(object):
 
     def _save_to_excel(self, path: str, sheet_names: list[str], data: dict[str: list[list[any]]],
                        workbook: openpyxl.Workbook | None = None):
-        wb = openpyxl.Workbook() if workbook is None else workbook
-        wb.active.title = sheet_names[0]
-        for name in sheet_names[1:]:
-            if name in wb:
-                print("表单{}已经存在，默认清空".format(name))
-                wb.remove(wb.get_sheet_by_name(name))
-            wb.create_sheet(title=name)
+        wb: openpyxl.Workbook | None = None
+        if workbook:
+            wb = workbook
+            for name in sheet_names:
+                if name in wb:
+                    print("表单{}已经存在，默认清空".format(name))
+                    wb.remove(wb[name])
+                wb.create_sheet(title=name)
+        else:
+            wb = openpyxl.Workbook()
+            wb.active.title = sheet_names[0]
+            for name in sheet_names[1:]:
+                wb.create_sheet(title=name)
 
         for sheet in wb.worksheets:
             sheet_data = data.get(sheet.title)
@@ -177,7 +194,7 @@ class Scheduler(object):
         self.load_workers()
         self.load_days()
         self.load_history()
-        self._calc_stats()
+        self._init_stats()
         workday_schedules = self.schedule_workday(year, month)
         holiday_schedules = self.schedule_holiday(year, month)
         schedules = workday_schedules + holiday_schedules
@@ -185,42 +202,57 @@ class Scheduler(object):
         self._save_schedule(year, month, schedules)
 
     def _save_schedule(self, year: int, month: int, schedules: list[Assignment]):
-        file_name = os.path.join(self.dest_dir, "{}.xlsx".format(year))
-        wb = openpyxl.load_workbook(file_name, data_only=True) if os.path.exists(file_name) else openpyxl.Workbook()
+        file_name = os.path.join(self.dest_dir, "{}年{}月值班安排.xlsx".format(year, month))
+        wb = openpyxl.load_workbook(file_name, data_only=True) if os.path.exists(file_name) else None
         name = "{}月".format(month)
-        data = {name: [["日期", "值班人员"]]}
+        data = {name: [["日期", "值班人员", "星期", "是否节假日", "最后工作日系数", "节假日系数"]]}
         rows = data[name]
         for s in schedules:
-            rows.append([s.date.strftime("%Y-%m-%d"), s.name])
+            holiday_flag = self.Y if s.holiday else self.N
+            rows.append([s.date.strftime("%Y-%m-%d"), s.name, s.date.isoweekday(), holiday_flag,
+                         self.workday_stats_map.get(s.name, 0.0), self.holiday_stats_map.get(s.name, 0.0)])
         self._save_to_excel(file_name, [name], data, wb)
 
     def schedule_workday(self, year: int, month: int) -> list[Assignment]:
-        schedules = self._schedule(year, month, self.last_workdays[year][month], self.normal_workdays[year][month],
-                                   self.workday_stats, self.workday_stats_map, self.last_workday_dest)
+        start_idx = self._find_start_person_idx(lambda x: not x.holiday)
+        schedules = self._schedule(year, month, start_idx, self.last_workdays[year][month],
+                                   self.normal_workdays[year][month], self.workday_stats, self.workday_stats_map,
+                                   self.last_workday_dest)
         # TODO: nobody will be scheduled two times in a week is preferred
         return schedules
 
     def schedule_holiday(self, year: int, month: int) -> list[Assignment]:
-        schedules = self._schedule(year, month, self.normal_holidays[year][month], self.last_holidays[year][month],
-                                   self.holiday_stats, self.holiday_stats_map, self.normal_holiday_dest)
+        start_idx = self._find_start_person_idx(lambda x: x.holiday)
+        schedules = self._schedule(year, month, start_idx, self.normal_holidays[year][month],
+                                   self.last_holidays[year][month], self.holiday_stats, self.holiday_stats_map,
+                                   self.normal_holiday_dest)
+        for s in schedules:
+            s.holiday = True
         return schedules
 
-    def _schedule(self, year: int, month: int, stats_day: list[int], non_stats_day: list[int], stats: list[Stat],
-                  stats_map: dict[str, float], dest: float) -> list[Assignment]:
-        schedules = self._init_schedule(year, month, stats_day + non_stats_day)
+    def _find_start_person_idx(self, predict) -> int:
+        for i in range(len(self.history_schedule)-1, 0, -1):
+            if predict(self.history_schedule[i]):
+                for j in range(len(self.workers)):
+                    if self.workers[j] == self.history_schedule[i].name:
+                        return j + 1
+        return 0
+
+    def _schedule(self, year: int, month: int, idx: int, stats_day: list[int], non_stats_day: list[int],
+                  stats: list[Stat], stats_map: dict[str, float], dest: float) -> list[Assignment]:
+        schedules = self._init_schedule(year, month, idx, stats_day + non_stats_day)
         schedules = self._reschedule_by_stat(schedules, stats, stats_map, stats_day, dest)
         return schedules
 
-    def _init_schedule(self, year: int, month: int, days: list[int]) -> list[Assignment]:
+    def _init_schedule(self, year: int, month: int, idx: int, days: list[int]) -> list[Assignment]:
         """先按顺序安排所有人"""
         cur = datetime.date(year=year, month=month, day=1)
-        count = 0
         schedules: list[Assignment] = []
         while cur.month == month:
-            worker = self.workers[count % len(self.workers)]
+            worker = self.workers[idx % len(self.workers)]
             if cur.day in days:
                 schedules.append(Assignment(cur, worker))
-                count += 1
+                idx += 1
             cur = cur + datetime.timedelta(days=1)
         return schedules
 
@@ -229,7 +261,8 @@ class Scheduler(object):
         """按照统计对人员进行重新分配"""
         for i in range(len(schedules)):
             cur_worker_stats = stats_map.get(schedules[i].name, 0.0)
-            if cur_worker_stats > dest:
+            day = schedules[i].date.day
+            if cur_worker_stats > dest and day in stats_day:
                 self._reschedule(i, cur_worker_stats, schedules, stats, stats_day)
         return schedules
 
@@ -258,8 +291,17 @@ class Scheduler(object):
 
     def _recalc_stats(self, schedules: list[Assignment] | None):
         counts: dict[str: AssignmentCount] = copy.deepcopy(self.history_count)
-        has_holiday = False
-        has_workday = False
+        counts = self._schedule_count(schedules, counts)
+        self._calc_stats(counts)
+
+    def _init_stats(self):
+        self.history_count = self._schedule_count(self.history_schedule)
+        self._calc_stats(self.history_count)
+
+    def _schedule_count(self, schedules: list[Assignment], counts: dict[str: AssignmentCount] = None) -> dict[str: AssignmentCount]:
+        if counts is None:
+            counts = dict()
+
         for s in schedules:
             year = s.date.year
             month = s.date.month
@@ -271,38 +313,47 @@ class Scheduler(object):
                 counts[worker] = assignment_count
             if day in self.normal_holidays[year][month]:
                 assignment_count.normal_workday += 1
-                has_holiday = True
             elif day in self.last_workdays[year][month]:
                 assignment_count.last_workday += 1
-                has_workday = True
             elif day in self.normal_workdays[year][month]:
                 assignment_count.normal_holiday += 1
-                has_workday = True
             else:
-                has_holiday = True
                 assignment_count.last_holiday += 1
+        return counts
 
-        if has_workday:
-            for ws in self.workday_stats:
-                count: AssignmentCount = counts[ws.name]
-                ws.stats = count.last_workday / (count.normal_workday + count.last_workday) * 100
-                self.workday_stats_map[ws.name] = ws.stats
-            self.workday_stats.sort(key=lambda x: x.date)
+    def _calc_stats(self, counts: dict[str, AssignmentCount]):
+        self.workday_stats.clear()
+        self.holiday_stats.clear()
+        for name, count in counts.items():
+            if count.normal_workday + count.last_workday == 0:
+                wstats = 0.0
+            else:
+                wstats = count.last_workday / (count.normal_workday + count.last_workday) * 100.0
 
-        if has_holiday:
-            for hs in self.holiday_stats:
-                count: AssignmentCount = counts[hs.name]
-                hs.stats = count.normal_holiday / (count.normal_holiday + count.last_holiday) * 100
-                self.holiday_stats_map[hs.name] = hs.stats
-            self.holiday_stats.sort(key=lambda x: x.date)
+            if count.normal_holiday + count.last_holiday == 0:
+                hstats = 0.0
+            else:
+                hstats = count.normal_holiday / (count.normal_holiday + count.last_holiday) * 100.0
+            self.workday_stats.append(Stat(name, wstats))
+            self.holiday_stats.append(Stat(name, hstats))
+        self.workday_stats.sort(key=lambda x: x.stats)
+        self.holiday_stats.sort(key=lambda x: x.stats)
 
-    def _calc_stats(self):
-        self._recalc_stats(self.history_schedule)
+        self.workday_stats_map = {x.name: x.stats for x in self.workday_stats}
+        self.holiday_stats_map = {x.name: x.stats for x in self.holiday_stats}
 
 
 if __name__ == '__main__':
     scheduler = Scheduler()
+    # scheduler.schedule_for_month(2022, 1)
+    # scheduler.schedule_for_month(2022, 2)
+    # scheduler.schedule_for_month(2022, 3)
+    # scheduler.schedule_for_month(2022, 4)
+    # scheduler.schedule_for_month(2022, 5)
+    # scheduler.schedule_for_month(2022, 6)
     scheduler.schedule_for_month(2022, 7)
+    # scheduler.schedule_for_month(2022, 8)
+    # scheduler.schedule_for_month(2022, 9)
     # scheduler.load_days()
     # scheduler.load_workers()
     # print(scheduler.workers)
