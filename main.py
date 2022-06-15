@@ -145,11 +145,14 @@ class Scheduler(object):
         path = os.path.join(self.workday_dir, "{}.xlsx".format(year))
         self._save_to_excel(path, sheet_names, data)
 
-    def _save_to_excel(self, path: str, sheet_names: list[str], data: dict[str: list[list[any]]]):
-
-        wb = openpyxl.Workbook()
+    def _save_to_excel(self, path: str, sheet_names: list[str], data: dict[str: list[list[any]]],
+                       workbook: openpyxl.Workbook | None = None):
+        wb = openpyxl.Workbook() if workbook is None else workbook
         wb.active.title = sheet_names[0]
         for name in sheet_names[1:]:
+            if name in wb:
+                print("表单{}已经存在，默认清空".format(name))
+                wb.remove(wb.get_sheet_by_name(name))
             wb.create_sheet(title=name)
 
         for sheet in wb.worksheets:
@@ -170,7 +173,7 @@ class Scheduler(object):
             if str(need_schedule) == self.Y:
                 self.workers.append(name)
 
-    def schedule_for_month(self, year: int, month: int) -> list[Assignment]:
+    def schedule_for_month(self, year: int, month: int):
         self.load_workers()
         self.load_days()
         self.load_history()
@@ -178,7 +181,18 @@ class Scheduler(object):
         workday_schedules = self.schedule_workday(year, month)
         holiday_schedules = self.schedule_holiday(year, month)
         schedules = workday_schedules + holiday_schedules
-        return sorted(schedules, key=lambda x: x.date)
+        schedules.sort(key=lambda x: x.date)
+        self._save_schedule(year, month, schedules)
+
+    def _save_schedule(self, year: int, month: int, schedules: list[Assignment]):
+        file_name = os.path.join(self.dest_dir, "{}.xlsx".format(year))
+        wb = openpyxl.load_workbook(file_name, data_only=True) if os.path.exists(file_name) else openpyxl.Workbook()
+        name = "{}月".format(month)
+        data = {name: [["日期", "值班人员"]]}
+        rows = data[name]
+        for s in schedules:
+            rows.append([s.date.strftime("%Y-%m-%d"), s.name])
+        self._save_to_excel(file_name, [name], data, wb)
 
     def schedule_workday(self, year: int, month: int) -> list[Assignment]:
         schedules = self._schedule(year, month, self.last_workdays[year][month], self.normal_workdays[year][month],
@@ -244,6 +258,8 @@ class Scheduler(object):
 
     def _recalc_stats(self, schedules: list[Assignment] | None):
         counts: dict[str: AssignmentCount] = copy.deepcopy(self.history_count)
+        has_holiday = False
+        has_workday = False
         for s in schedules:
             year = s.date.year
             month = s.date.month
@@ -255,24 +271,30 @@ class Scheduler(object):
                 counts[worker] = assignment_count
             if day in self.normal_holidays[year][month]:
                 assignment_count.normal_workday += 1
+                has_holiday = True
             elif day in self.last_workdays[year][month]:
                 assignment_count.last_workday += 1
+                has_workday = True
             elif day in self.normal_workdays[year][month]:
                 assignment_count.normal_holiday += 1
+                has_workday = True
             else:
+                has_holiday = True
                 assignment_count.last_holiday += 1
 
-        for ws in self.workday_stats:
-            count: AssignmentCount = counts[ws.name]
-            ws.stats = count.last_workday / (count.normal_workday + count.last_workday) * 100
-            self.workday_stats_map[ws.name] = ws.stats
-        self.workday_stats.sort(key=lambda x: x.date)
+        if has_workday:
+            for ws in self.workday_stats:
+                count: AssignmentCount = counts[ws.name]
+                ws.stats = count.last_workday / (count.normal_workday + count.last_workday) * 100
+                self.workday_stats_map[ws.name] = ws.stats
+            self.workday_stats.sort(key=lambda x: x.date)
 
-        for hs in self.holiday_stats:
-            count: AssignmentCount = counts[hs.name]
-            hs.stats = count.normal_holiday / (count.normal_holiday + count.last_holiday) * 100
-            self.holiday_stats_map[hs.name] = hs.stats
-        self.holiday_stats.sort(key=lambda x: x.date)
+        if has_holiday:
+            for hs in self.holiday_stats:
+                count: AssignmentCount = counts[hs.name]
+                hs.stats = count.normal_holiday / (count.normal_holiday + count.last_holiday) * 100
+                self.holiday_stats_map[hs.name] = hs.stats
+            self.holiday_stats.sort(key=lambda x: x.date)
 
     def _calc_stats(self):
         self._recalc_stats(self.history_schedule)
