@@ -15,7 +15,7 @@ class ValidateInt(argparse.Action):
                 parser.error("请输入一个数字，获取到的参数为{}".format(value))
         setattr(namespace, self.dest, values)
 
-dir_prefix = "."
+dir_prefix = ".."
 
 tool_description = """
 排班程序说明：
@@ -78,11 +78,11 @@ class AssignmentCount(object):
 
 class Scheduler(object):
 
-    schedule_dir = os.path.join(dir_prefix, "schedule")
-    workday_dir = os.path.join(dir_prefix, "schedule", "workdays")
-    worker_dir = os.path.join(dir_prefix, "schedule", "workers.xlsx")
-    history_dir = os.path.join(dir_prefix, "schedule", "history")
-    dest_dir = os.path.join(dir_prefix, "schedule", "this_year")
+    schedule_dir = os.path.join(dir_prefix, "../schedule")
+    workday_dir = os.path.join(dir_prefix, "../schedule", "workdays")
+    worker_dir = os.path.join(dir_prefix, "../schedule", "workers.xlsx")
+    history_dir = os.path.join(dir_prefix, "../schedule", "history")
+    dest_dir = os.path.join(dir_prefix, "../schedule", "this_year")
     Y = "Y"
     N = "N"
     NORMAL_WORKDAY = 1
