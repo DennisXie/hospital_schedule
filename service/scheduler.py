@@ -5,8 +5,8 @@ import os
 
 import openpyxl
 
-from model.assignment import Assignment
-from model.assignment_count import AssignmentCount
+from model.dto.assignment import Assignment
+from model.dto.assignment_count import AssignmentCount
 
 
 class ValidateInt(argparse.Action):

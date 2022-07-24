@@ -1,23 +1,30 @@
 from PySide6.QtCore import Qt, QRect, QDate, QPoint
-from PySide6.QtGui import QPainter, QFont, QColor, QAction
+from PySide6.QtGui import QPainter, QColor, QAction
 from PySide6.QtWidgets import QCalendarWidget, QMenu
 
-from model.assignment import Assignment
+from model.dto.assignment import Assignment
 
 
 class ScheduleCalendar(QCalendarWidget):
     def __init__(self, parent=None):
         super(ScheduleCalendar, self).__init__(parent)
         self._data: dict[str, Assignment] = {}
-        self._show()
+        self.init_config()
+        self.refresh()
 
-    def set_data(self, assignments: list[Assignment]) -> None:
-        self._data = {assignment.key: assignment for assignment in assignments}
-        self._show()
-
-    def _show(self):
+    def init_config(self):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_menu)
+        self.currentPageChanged.connect(self._page_changed)
+
+    def _page_changed(self, year: int, month: int):
+        self.refresh()
+
+    def refresh(self):
+        # TODO: get data
+        self.update()
+        # self.activated.connect(self._show_date)
+        # self.setDateEditEnabled(True)
 
     def get_assignment(self, date: QDate) -> Assignment:
         key: str = Assignment.generate_key(date.year(), date.month(), date.day())
@@ -62,9 +69,6 @@ class ScheduleCalendar(QCalendarWidget):
 
     def _show_date(self, date: QDate):
         print(date.day())
-
-       # self.activated.connect(self._show_date)
-        # self.setDateEditEnabled(True)
 
     def _show_menu(self, pos: QPoint):
         menu = QMenu(self)
