@@ -1,6 +1,9 @@
 from PySide6.QtCore import Qt, QPoint, Signal, QObject, QEvent
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QMenu
+from PySide6.QtWidgets import QTableWidget, QHeaderView, QMenu
 from PySide6.QtGui import QAction
+
+from model.AssignmentCount import AssignmentCount
+from view.Doctor import DoctorRows
 
 
 class DoctorList(QTableWidget):
@@ -9,23 +12,24 @@ class DoctorList(QTableWidget):
 
     def __init__(self, parent):
         super(DoctorList, self).__init__(parent)
-        self.setColumnCount(2)
-        self.setHorizontalHeaderLabels(["姓名", "是否值班"])
-        self._doctors = ["菠萝", "香蕉", "Orange", "Apple"]
+        self._data = []
+        self._show()
+
+    def set_data(self, data: list[(AssignmentCount, bool)]):
+        self._data = data
         self._show()
 
     def _show(self):
-        self.setRowCount(len(self._doctors))
-        self.setColumnCount(2)
+        self.setRowCount(len(self._data))
+        self.setColumnCount(len(DoctorRows.header))
+        self.setHorizontalHeaderLabels(DoctorRows.header)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
-        for i, _name in enumerate(self._doctors):
-            name = QTableWidgetItem(_name)
-            name.setFlags(name.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            duty = QTableWidgetItem("是")
-            duty.setFlags(duty.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.setItem(i, 0, name)
-            self.setItem(i, 1, duty)
         self.setAutoScroll(True)
+        self.verticalHeader().setVisible(False)
+        rows = DoctorRows(self._data).rows
+        for i, row in enumerate(rows):
+            for j, item in enumerate(row):
+                self.setItem(i, j, item)
         self.customContextMenuRequested.connect(self._show_menu)
 
     def cellClicked(self, *args, **kwargs):

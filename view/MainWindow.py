@@ -1,6 +1,8 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QPushButton
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
+from model.AssignmentCount import AssignmentCount
+
 from view.ScheduleCalendar import ScheduleCalendar
 from view.DoctorList import DoctorList
 
@@ -29,10 +31,15 @@ class MainWindow(QMainWindow):
 
     def create_calendar(self):
         self._calendar = ScheduleCalendar(parent=self)
-        self._calendar.setMinimumSize(960, 720)
+        self._calendar.setMinimumSize(600, 720)
         return self._calendar
 
     def create_doctor_list(self):
         self._doctors = DoctorList(parent=self)
-        self._doctors.setMinimumSize(320, 720)
+        self._doctors.setFixedWidth(820)
+        data = []
+        for i in range(50):
+            data.append((AssignmentCount("张"+str(i)), True))
+        self._doctors.set_data(data)
+
         return self._doctors
