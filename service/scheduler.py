@@ -5,7 +5,8 @@ import os
 
 import openpyxl
 
-from model.AssignmentCount import AssignmentCount
+from model.assignment import Assignment
+from model.assignment_count import AssignmentCount
 
 
 class ValidateInt(argparse.Action):
@@ -26,14 +27,6 @@ parser = argparse.ArgumentParser(description=tool_description)
 parser.add_argument("-c", "--calendar", dest="calendar", help="生成日历, 指定年份, 如2022")
 parser.add_argument("-m", "--month", dest="month", help="排班月份，格式为yyyymm, 如202209")
 parser.add_argument("-s", "--stats", dest="stats", help="统计历史值班数据, 无需参数", action="store_true")
-
-
-class Assignment(object):
-
-    def __init__(self, date: datetime.date | str, name: str, holiday: bool = False):
-        self.date = date if isinstance(date, datetime.date) else datetime.datetime.strptime(date, "%Y-%m-%d").date()
-        self.name = name
-        self.holiday = holiday
 
 
 class Stat(object):

@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QPoint, Signal, QObject, QEvent
 from PySide6.QtWidgets import QTableWidget, QHeaderView, QMenu
 from PySide6.QtGui import QAction
 
-from model.AssignmentCount import AssignmentCount
+from model.assignment_count import AssignmentCount
 from view.Doctor import DoctorRows
 
 

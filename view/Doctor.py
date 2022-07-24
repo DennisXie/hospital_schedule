@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTableWidgetItem
 
-from model.AssignmentCount import AssignmentCount
+from model.assignment_count import AssignmentCount
 
 
 class DoctorRows(object):

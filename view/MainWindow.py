@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QPushButton
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
-from model.AssignmentCount import AssignmentCount
+from model.assignment_count import AssignmentCount
 
 from view.ScheduleCalendar import ScheduleCalendar
 from view.DoctorList import DoctorList
