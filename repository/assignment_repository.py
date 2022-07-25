@@ -34,11 +34,11 @@ class AssignmentRepo(object):
 
     @classmethod
     def find_one_by_date(cls, session, date: datetime.date):
-        return session.query(AssignmentPo).filter(AssignmentPo.date == date).one()
+        return session.query(AssignmentPo).filter(AssignmentPo.date == date).one_or_none()
 
     @classmethod
     def find_one_by_id(cls, session, _id: int):
-        return session.query(AssignmentPo).filter(AssignmentPo.id == _id).one()
+        return session.query(AssignmentPo).filter(AssignmentPo.id == _id).one_or_none()
 
     @classmethod
     def update_by_date(cls, session, date: datetime.date, _update: AssignmentPo):
