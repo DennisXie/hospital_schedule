@@ -16,5 +16,22 @@ class ScheduleService(object):
             for assignment_po in assignment_pos:
                 name = doctor_map.get(assignment_po.doctor_id)
                 assignment = Assignment(assignment_po.date, name, assignment_po.holiday, assignment_po.ignore)
+                assignment.id = assignment_po.id
                 assignments.append(assignment)
             return assignments
+
+    @classmethod
+    def update_assignment(cls, _update: Assignment) -> Assignment:
+        with Session() as session:
+            doctor_po = DoctorRepo.find_one_by_name(session, _update.name)
+            if doctor_po:
+                _update_po = AssignmentPo(doctor_id=doctor_po.id, holiday=_update.holiday, ignore=_update.ignore)
+                AssignmentRepo.update_by_id(session, _update.id, _update_po)
+                return _update
+            else:
+                # TODO: throw doctor not exist
+                pass
+
+    @classmethod
+    def schedule(cls, year: int, month: int) -> list[Assignment]:
+        pass

@@ -8,6 +8,7 @@ class Assignment(object):
         self.name = name
         self.holiday = holiday
         self.ignore = ignore
+        self.id = None
 
     @property
     def key(self) -> str:
